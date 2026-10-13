@@ -2,15 +2,15 @@ import AppKit
 import ApplicationServices
 import CmdXCore
 
-/// Uses the Accessibility API to detect whether the user is editing text in
-/// the frontmost application (e.g. renaming a file or typing in search).
+/// Uses the Accessibility API to find where focus is in the frontmost
+/// application.
 ///
-/// Only *editable* text controls count: Finder exposes item names as
-/// read-only text fields, and those must not block cut and paste.
-/// Fails safe: if focus cannot be determined, it reports "editing" so CmdX
-/// stays out of the way rather than hijacking ⌘X.
+/// Text editing: only *editable* text controls count, because Finder exposes
+/// item names as read-only text fields and those must not block cut and
+/// paste. Fails safe: if focus cannot be determined, it reports "editing"
+/// so CmdX stays out of the way rather than hijacking ⌘X.
 @MainActor
-final class AccessibilityFocusInspector: TextFocusInspecting {
+final class AccessibilityFocusInspector: FocusInspecting {
     private static let textRoles: Set<String> = [
         kAXTextFieldRole,
         kAXTextAreaRole,
@@ -18,12 +18,12 @@ final class AccessibilityFocusInspector: TextFocusInspecting {
     ]
 
     func isTextInputFocused() -> Bool {
-        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
+        guard let app = frontmostApplication() else {
             Diagnostics.focus.notice("No frontmost application; treating as editing")
             return true
         }
 
-        switch AXElement.application(pid: pid).lookup(kAXFocusedUIElementAttribute) {
+        switch app.lookup(kAXFocusedUIElementAttribute) {
         case .noValue:
             return false
         case .failure:
@@ -36,6 +36,26 @@ final class AccessibilityFocusInspector: TextFocusInspecting {
             }
             return isEditing(element, role: role)
         }
+    }
+
+    /// Browser windows are standard windows, and the Desktop has no focused
+    /// window. Quick Look, sheets and dialogs report other subroles.
+    func isFileBrowserFocused() -> Bool {
+        guard let app = frontmostApplication() else { return false }
+        switch app.lookup(kAXFocusedWindowAttribute) {
+        case .noValue:
+            return true
+        case .failure:
+            return false
+        case .value(let value):
+            let subrole = AXValueDecoder.element(value)?.string(kAXSubroleAttribute)
+            Diagnostics.focus.debug("Focused window subrole \(subrole ?? "none", privacy: .public)")
+            return subrole == kAXStandardWindowSubrole
+        }
+    }
+
+    private func frontmostApplication() -> AXElement? {
+        NSWorkspace.shared.frontmostApplication.map { AXElement.application(pid: $0.processIdentifier) }
     }
 
     private func isEditing(_ element: AXElement, role: String) -> Bool {

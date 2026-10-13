@@ -17,16 +17,20 @@ public final class CutPasteCoordinator {
     }
 
     private let frontmost: FrontmostApplicationProviding
-    private let focus: TextFocusInspecting
+    private let focus: FocusInspecting
     private let pasteboard: PasteboardReading
+    private let files: FileExistenceChecking
     private let commands: FinderCommandSending
     private let awaiter: ClipboardChangeAwaiter
     private let observer: CutEventObserving?
+    /// Identifies the latest ⌘X, so a superseded capture's late result is ignored.
+    private var captureID = 0
 
     public init(
         frontmost: FrontmostApplicationProviding,
-        focus: TextFocusInspecting,
+        focus: FocusInspecting,
         pasteboard: PasteboardReading,
+        files: FileExistenceChecking,
         commands: FinderCommandSending,
         awaiter: ClipboardChangeAwaiter,
         observer: CutEventObserving? = nil
@@ -34,6 +38,7 @@ public final class CutPasteCoordinator {
         self.frontmost = frontmost
         self.focus = focus
         self.pasteboard = pasteboard
+        self.files = files
         self.commands = commands
         self.awaiter = awaiter
         self.observer = observer
@@ -43,6 +48,9 @@ public final class CutPasteCoordinator {
     /// immediately without any further inspection.
     public func handle(_ stroke: KeyStroke) -> EventDecision {
         guard let shortcut = Shortcut(stroke) else { return .passThrough }
+        // Nothing to cancel: let Esc through without querying Finder.
+        if shortcut == .cancel, state == .idle { return .passThrough }
+
         guard frontmost.isFinderFrontmost() else {
             observer?.record(.ignoredOutsideFinder(shortcut))
             return .passThrough
@@ -60,7 +68,12 @@ public final class CutPasteCoordinator {
         case .paste:
             return handlePaste()
         case .cancel:
-            cancel()
+            // Esc that closes Quick Look or a dialog must not drop the cut.
+            if focus.isFileBrowserFocused() {
+                cancel()
+            } else {
+                observer?.record(.ignoredOutsideFileBrowser(shortcut))
+            }
             return .passThrough
         }
     }
@@ -70,6 +83,19 @@ public final class CutPasteCoordinator {
         guard state != .idle else { return }
         state = .idle
         observer?.record(.cancelled)
+    }
+
+    /// Re-arms the last pasted cut when Finder never moved its items (the
+    /// paste went to the same folder, a conflict dialog was cancelled, or
+    /// permission was denied). Refused if any item has left its folder.
+    public func restoreCut() {
+        guard case .completed(let session) = state else { return }
+        guard session.items.allSatisfy(files.fileExists(at:)) else {
+            observer?.record(.restoreUnavailable)
+            return
+        }
+        state = .ready(session)
+        observer?.record(.cutRestored(itemCount: session.items.count))
     }
 
     /// Drops the cut if the user has since copied something else,
@@ -85,18 +111,20 @@ public final class CutPasteCoordinator {
         guard !isRepeat, state != .capturing else { return .consume }
 
         let baseline = pasteboard.changeCount
+        captureID += 1
+        let id = captureID
         state = .capturing
         commands.send(.copy)
         observer?.record(.copyRequested)
         awaiter.awaitChange(from: baseline) { [weak self] changed in
-            self?.completeCapture(clipboardChanged: changed)
+            self?.completeCapture(id, clipboardChanged: changed)
         }
         return .consume
     }
 
-    private func completeCapture(clipboardChanged: Bool) {
-        // The user may have cancelled while we were waiting.
-        guard state == .capturing else { return }
+    private func completeCapture(_ id: Int, clipboardChanged: Bool) {
+        // The user may have cancelled, or cancelled and cut again, while we waited.
+        guard id == captureID, state == .capturing else { return }
 
         guard clipboardChanged else {
             state = .idle
@@ -117,7 +145,7 @@ public final class CutPasteCoordinator {
         switch state {
         case .ready(let session):
             commands.send(.moveHere)
-            state = .completed(changeCount: session.changeCount)
+            state = .completed(session)
             observer?.record(.moveRequested(itemCount: session.items.count))
             return .consume
         case .capturing, .completed:

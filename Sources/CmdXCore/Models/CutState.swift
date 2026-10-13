@@ -6,16 +6,16 @@ public enum CutState: Equatable, Sendable {
     case capturing
     /// Items are cut and will be moved on the next ⌘V.
     case ready(CutSession)
-    /// The items were pasted. Like Windows, pasting the same cut again is a no-op.
-    case completed(changeCount: Int)
+    /// Finder was asked to move the items. Like Windows, pasting the same
+    /// cut again is a no-op; the session is kept so the cut can be restored
+    /// if Finder never moved them.
+    case completed(CutSession)
 
     /// Pasteboard generation this state depends on, if any.
     var clipboardChangeCount: Int? {
         switch self {
-        case .ready(let session):
+        case .ready(let session), .completed(let session):
             return session.changeCount
-        case .completed(let changeCount):
-            return changeCount
         case .idle, .capturing:
             return nil
         }

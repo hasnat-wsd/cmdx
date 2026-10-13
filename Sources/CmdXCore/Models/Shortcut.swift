@@ -7,16 +7,21 @@ public enum Shortcut: Equatable, Sendable {
     /// Esc – abandon a pending cut (as Windows Explorer does).
     case cancel
 
-    /// Classifies a key stroke. Modifiers must match exactly, so ⌘⇧V,
-    /// ⌘⌥V etc. are left untouched for the system to handle.
+    /// Classifies a key stroke. Letters are matched by the character the
+    /// layout produces, as menu key equivalents are, so ⌘X follows the
+    /// user's layout (Dvorak, AZERTY…). Modifiers must match exactly, so
+    /// ⌘⇧V, ⌘⌥V etc. are left untouched for the system to handle.
     public init?(_ stroke: KeyStroke) {
-        switch (stroke.keyCode, stroke.modifiers) {
-        case (KeyCode.x, [.command]):
-            self = .cut
-        case (KeyCode.v, [.command]):
-            self = .paste
-        case (KeyCode.escape, []):
+        if stroke.keyCode == KeyCode.escape, stroke.modifiers.isEmpty {
             self = .cancel
+            return
+        }
+        guard stroke.modifiers == .command else { return nil }
+        switch stroke.characters {
+        case "x":
+            self = .cut
+        case "v":
+            self = .paste
         default:
             return nil
         }

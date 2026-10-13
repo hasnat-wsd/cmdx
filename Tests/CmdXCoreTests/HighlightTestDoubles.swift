@@ -6,9 +6,32 @@ final class StubItemLocator: CutItemLocating {
     var frames: [CGRect] = []
     private(set) var requestedItems: [[URL]] = []
 
-    func frames(of items: [URL]) -> [CGRect] {
+    func frames(of items: [URL]) async -> [CGRect] {
         requestedItems.append(items)
         return frames
+    }
+}
+
+/// A locator whose search stays in progress until the test finishes it.
+@MainActor
+final class SuspendedItemLocator: CutItemLocating {
+    private var continuation: CheckedContinuation<[CGRect], Never>?
+    private(set) var requestCount = 0
+
+    func frames(of items: [URL]) async -> [CGRect] {
+        requestCount += 1
+        return await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilRequested() async {
+        while continuation == nil {
+            await Task.yield()
+        }
+    }
+
+    func finish(with frames: [CGRect]) {
+        continuation?.resume(returning: frames)
+        continuation = nil
     }
 }
 

@@ -7,6 +7,7 @@ struct CoordinatorHarness {
     let frontmost = StubFrontmostProvider()
     let focus = StubFocusInspector()
     let pasteboard = FakePasteboard()
+    let files = StubFileSystem()
     let scheduler = ManualScheduler()
     let events = SpyCutEventObserver()
     let finder: FakeFinder
@@ -23,6 +24,7 @@ struct CoordinatorHarness {
             frontmost: frontmost,
             focus: focus,
             pasteboard: pasteboard,
+            files: files,
             commands: finder,
             awaiter: awaiter,
             observer: events

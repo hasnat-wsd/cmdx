@@ -25,6 +25,7 @@ enum CompositionRoot {
             frontmost: frontmost,
             focus: AccessibilityFocusInspector(),
             pasteboard: pasteboard,
+            files: FileManagerExistenceChecker(),
             commands: FinderKeystrokeSender(),
             awaiter: awaiter,
             observer: CompositeCutEventObserver([CutEventLogger(), FailedCutBeeper()])

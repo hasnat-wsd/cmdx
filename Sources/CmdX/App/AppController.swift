@@ -19,6 +19,7 @@ final class AppController {
     private let clipboardTimer = RepeatingTimer()
     private let highlightTimer = RepeatingTimer()
     private var statusBar: StatusBarController?
+    private var activationObserver: NSObjectProtocol?
 
     init(services: AppServices) {
         coordinator = services.coordinator
@@ -33,6 +34,15 @@ final class AppController {
         coordinator.onStateChange = { [weak self] _ in self?.stateDidChange() }
         clipboardTimer.start(interval: Self.clipboardPollInterval) { [weak self] in
             self?.coordinator.invalidateIfClipboardChanged()
+        }
+        // Hide the fade the moment another app comes forward, rather than
+        // leaving it over that app's windows until the next timer tick.
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateHighlight() }
         }
 
         if permission.isGranted {
@@ -49,6 +59,9 @@ final class AppController {
         permissionTimer.stop()
         clipboardTimer.stop()
         highlightTimer.stop()
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+        }
         highlightPresenter.refresh(for: .idle)
     }
 
@@ -100,6 +113,7 @@ final class AppController {
     private func makeMenuActions() -> StatusMenuActions {
         StatusMenuActions(
             cancelCut: { [weak self] in self?.coordinator.cancel() },
+            restoreCut: { [weak self] in self?.coordinator.restoreCut() },
             grantAccess: { [weak self] in self?.permission.openSystemSettings() },
             quit: { NSApp.terminate(nil) }
         )

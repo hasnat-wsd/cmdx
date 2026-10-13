@@ -49,6 +49,24 @@ struct CutEventTests {
         ])
     }
 
+    @Test func reportsSwallowedSecondPaste() {
+        let harness = CoordinatorHarness()
+        harness.cut([Fixtures.file])
+        harness.coordinator.handle(Keys.paste)
+        harness.coordinator.handle(Keys.paste)
+
+        #expect(harness.events.recorded.last == .pasteSwallowed)
+    }
+
+    @Test func reportsEscapeOutsideBrowserWindow() {
+        let harness = CoordinatorHarness()
+        harness.cut([Fixtures.file])
+        harness.focus.fileBrowserFocused = false
+        harness.coordinator.handle(Keys.escape)
+
+        #expect(harness.events.recorded.last == .ignoredOutsideFileBrowser(.cancel))
+    }
+
     @Test func reportsCancelOnlyWhenSomethingWasCut() {
         let harness = CoordinatorHarness()
         harness.coordinator.handle(Keys.escape)
