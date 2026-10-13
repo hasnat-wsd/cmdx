@@ -8,14 +8,26 @@ final class StubFrontmostProvider: FrontmostApplicationProviding {
 }
 
 @MainActor
-final class StubFocusInspector: TextFocusInspecting {
+final class StubFocusInspector: FocusInspecting {
     var textFocused = false
+    var fileBrowserFocused = true
     private(set) var queryCount = 0
 
     func isTextInputFocused() -> Bool {
         queryCount += 1
         return textFocused
     }
+
+    func isFileBrowserFocused() -> Bool {
+        queryCount += 1
+        return fileBrowserFocused
+    }
+}
+
+@MainActor
+final class StubFileSystem: FileExistenceChecking {
+    var missing: Set<URL> = []
+    func fileExists(at url: URL) -> Bool { !missing.contains(url) }
 }
 
 @MainActor
@@ -70,14 +82,18 @@ final class ManualScheduler: Scheduling {
 
     func runUntilIdle() {
         while !pending.isEmpty {
-            pending.removeFirst()()
+            runNext()
         }
+    }
+
+    func runNext() {
+        pending.removeFirst()()
     }
 }
 
 enum Keys {
-    static let cut = KeyStroke(keyCode: KeyCode.x, modifiers: .command)
-    static let paste = KeyStroke(keyCode: KeyCode.v, modifiers: .command)
+    static let cut = KeyStroke(keyCode: KeyCode.x, characters: "x", modifiers: .command)
+    static let paste = KeyStroke(keyCode: KeyCode.v, characters: "v", modifiers: .command)
     static let escape = KeyStroke(keyCode: KeyCode.escape, modifiers: [])
     static let letterA = KeyStroke(keyCode: 0x00, modifiers: [])
 }

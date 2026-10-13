@@ -5,6 +5,7 @@ import CmdXCore
 @MainActor
 struct StatusMenuActions {
     let cancelCut: @MainActor () -> Void
+    let restoreCut: @MainActor () -> Void
     let grantAccess: @MainActor () -> Void
     let quit: @MainActor () -> Void
 }
@@ -22,6 +23,13 @@ enum StatusMenuBuilder {
             addItemNames(of: session, to: menu)
             menu.addItem(.separator())
             menu.addItem(ClosureMenuItem(title: "Cancel Cut", handler: actions.cancelCut))
+        }
+
+        if case .completed = state {
+            // For when Finder did not move the items (same folder,
+            // cancelled conflict dialog, no permission).
+            menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem(title: "Restore Last Cut", handler: actions.restoreCut))
         }
 
         if !isActive {

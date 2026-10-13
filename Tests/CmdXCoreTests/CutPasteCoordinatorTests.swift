@@ -38,7 +38,7 @@ struct CutPasteCoordinatorTests {
     @Test func ignoresAutoRepeatedCut() {
         let harness = CoordinatorHarness()
         harness.finder.selection = [Fixtures.file]
-        let repeated = KeyStroke(keyCode: KeyCode.x, modifiers: .command, isRepeat: true)
+        let repeated = KeyStroke(keyCode: KeyCode.x, characters: "x", modifiers: .command, isRepeat: true)
 
         #expect(harness.coordinator.handle(repeated) == .consume)
         #expect(harness.finder.sent.isEmpty)
@@ -52,7 +52,7 @@ struct CutPasteCoordinatorTests {
 
         #expect(harness.coordinator.handle(Keys.paste) == .consume)
         #expect(harness.finder.sent == [.copy, .moveHere])
-        #expect(harness.coordinator.state == .completed(changeCount: 1))
+        #expect(harness.coordinator.state == .completed(CutSession(items: [Fixtures.file, Fixtures.folder], changeCount: 1)))
     }
 
     @Test func secondPasteOfSameCutDoesNothing() {
@@ -100,6 +100,38 @@ struct CutPasteCoordinatorTests {
         #expect(harness.coordinator.state == .idle)
     }
 
+    @Test func escapeInQuickLookOrDialogKeepsTheCut() {
+        let harness = CoordinatorHarness()
+        harness.cut([Fixtures.file])
+        harness.focus.fileBrowserFocused = false
+
+        #expect(harness.coordinator.handle(Keys.escape) == .passThrough)
+        #expect(harness.coordinator.state == .ready(CutSession(items: [Fixtures.file], changeCount: 1)))
+    }
+
+    @Test func escapeWithNothingCutIsNotInspected() {
+        let harness = CoordinatorHarness()
+
+        #expect(harness.coordinator.handle(Keys.escape) == .passThrough)
+        #expect(harness.focus.queryCount == 0)
+    }
+
+    /// A failed ⌘X whose wait outlives a cancel must not fail the next ⌘X.
+    @Test func supersededCaptureCannotFailNewCut() {
+        let harness = CoordinatorHarness(maxAttempts: 2)
+        harness.coordinator.handle(Keys.cut)  // nothing selected: this capture will time out
+        harness.scheduler.runNext()
+        harness.coordinator.cancel()
+        harness.coordinator.handle(Keys.cut)  // Finder is slow to update the clipboard
+        harness.scheduler.runNext()  // the first capture times out now
+
+        harness.pasteboard.replaceContents(with: [Fixtures.file])
+        harness.scheduler.runUntilIdle()
+
+        #expect(harness.coordinator.state == .ready(CutSession(items: [Fixtures.file], changeCount: 1)))
+        #expect(!harness.events.recorded.contains(.cutFailedClipboardUnchanged))
+    }
+
     @Test func cancelDuringCaptureWins() {
         let harness = CoordinatorHarness()
         harness.finder.selection = [Fixtures.file]
@@ -118,6 +150,41 @@ struct CutPasteCoordinatorTests {
         harness.cut([Fixtures.file])
 
         #expect(observed == [.capturing, .ready(CutSession(items: [Fixtures.file], changeCount: 1))])
+    }
+
+    // MARK: - Restoring
+
+    @Test func restoresCutWhenFinderDidNotMoveTheItems() {
+        let harness = CoordinatorHarness()
+        harness.cut([Fixtures.file])
+        harness.coordinator.handle(Keys.paste)
+
+        harness.coordinator.restoreCut()
+
+        #expect(harness.coordinator.state == .ready(CutSession(items: [Fixtures.file], changeCount: 1)))
+        #expect(harness.coordinator.handle(Keys.paste) == .consume)
+        #expect(harness.finder.sent == [.copy, .moveHere, .moveHere])
+    }
+
+    @Test func refusesToRestoreOnceItemsHaveMoved() {
+        let harness = CoordinatorHarness()
+        harness.cut([Fixtures.file, Fixtures.folder])
+        harness.coordinator.handle(Keys.paste)
+        harness.files.missing = [Fixtures.folder]
+
+        harness.coordinator.restoreCut()
+
+        #expect(harness.coordinator.state == .completed(CutSession(items: [Fixtures.file, Fixtures.folder], changeCount: 1)))
+        #expect(harness.events.recorded.last == .restoreUnavailable)
+    }
+
+    @Test func restoreDoesNothingBeforeAPaste() {
+        let harness = CoordinatorHarness()
+        harness.cut([Fixtures.file])
+
+        harness.coordinator.restoreCut()
+
+        #expect(harness.coordinator.state == .ready(CutSession(items: [Fixtures.file], changeCount: 1)))
     }
 
     // MARK: - Scope
