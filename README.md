@@ -8,6 +8,7 @@ folder, press <kbd>⌘</kbd> <kbd>V</kbd>, and they are moved there.
 ![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey)
 ![Swift](https://img.shields.io/badge/swift-6-orange)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
 ---
 
@@ -24,6 +25,7 @@ folder, press <kbd>⌘</kbd> <kbd>V</kbd>, and they are moved there.
 - [Security & privacy](#security--privacy)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ---
 
@@ -340,3 +342,9 @@ build after a clean checkout can fail. Run `swift test` again and it
 passes. `Scripts/build-app.sh` handles this automatically.
 
 </details>
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
